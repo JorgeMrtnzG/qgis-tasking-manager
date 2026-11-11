@@ -1,0 +1,7 @@
+{
+  "include": ["tasking_manager"],
+  "exclude": ["**/__pycache__"],
+  "extraPaths": ["/usr/lib/python3/dist-packages"],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.12"
+}

@@ -23,20 +23,94 @@
 """
 
 import os
+from json import dumps
+from typing import Any
 
-from qgis.PyQt import uic
-from qgis.PyQt import QtWidgets
+from qgis.core import QgsProject, QgsVectorLayer
+import requests
+from qgis.PyQt import QtWidgets, uic
+from requests.utils import select_proxy
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(
-    os.path.join(
-        os.path.dirname(__file__),
-        'tasking_manager_dialog_base.ui'),
+    os.path.join(os.path.dirname(__file__), "tasking_manager_dialog_base.ui"),
     from_imports=True,
-    import_from='tasking_manager')
+    import_from="tasking_manager",
+)
+
+
+API_URL = "https://tasking-manager-production-api.hotosm.org/api/v2/projects"
+
+
+def request(url: str, token: str, params: dict[str, str] | None):
+    headers = None if token == "" else {"Authorization": token}
+    resp = requests.get(url, params=params, headers=headers)
+    resp.raise_for_status()
+
+    data = resp.json()
+    return data
+
+
+def fetch_projects(gui_params: dict[str, str], token: str):
+    params = {**gui_params, "omitMapResults": True}
+
+    projects = request(API_URL, token, params)
+
+    return projects["results"]
+
+
+def fetch_project_layers(project_id: str, token: str):
+    url = f"{API_URL}/{project_id}"
+
+    project = request(url, token, None)
+
+    area_of_interest = dumps(project["areaOfInterest"])
+    tasks = dumps(project["tasks"])
+
+    aoi_layer = QgsVectorLayer(area_of_interest, f"{project_id}-AOI", "ogr")
+    tasks_layer = QgsVectorLayer(tasks, f"{project_id}-tasks", "ogr")
+
+    return aoi_layer, tasks_layer
+
+
+def format_project(project_dict: dict[str, Any]):
+    project_id = project_dict["projectId"]
+    project_name = project_dict["name"]
+
+    return f"#{project_id}: {project_name}"
 
 
 class TaskingManagerDialog(QtWidgets.QDialog, FORM_CLASS):
+    def _download_data(self):
+        selected_item = self.projects_list.currentItem()
+
+        project_id = selected_item.text().split(":")[0].replace("#", "")
+
+        aoi_layer, tasks_layer = fetch_project_layers(
+            project_id, self.token_edit.text()
+        )
+
+        project = QgsProject.instance()
+        project.addMapLayer(aoi_layer)
+        project.addMapLayer(tasks_layer)
+
+    def _fetch_projects(self):
+        self.projects_list.clear()
+        token_edit = self.token_edit
+        token = token_edit.text()
+
+        textsearch_edit = self.textsearch_edit
+        textsearch = textsearch_edit.text()
+
+        gui_params = {} if textsearch == "" else {"textSearch": textsearch}
+
+        projects = fetch_projects(gui_params, token)
+        fmt_projects = [format_project(p) for p in projects]
+
+        for fmt_project in fmt_projects:
+            item = QtWidgets.QListWidgetItem(fmt_project)
+            self.projects_list.addItem(item)
+
     def __init__(self, parent=None):
         """Constructor."""
         super(TaskingManagerDialog, self).__init__(parent)
@@ -46,3 +120,7 @@ class TaskingManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+
+        self.search_button.clicked.connect(self._fetch_projects)
+        self.download_button.clicked.connect(self._download_data)
+        # self.download_button.setEnabled(False)

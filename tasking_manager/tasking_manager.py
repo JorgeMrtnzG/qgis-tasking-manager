@@ -21,14 +21,15 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QLocale, QTranslator, QCoreApplication
+import os.path
+
 from qgis.core import QgsSettings
+from qgis.PyQt.QtCore import QCoreApplication, QLocale, QTranslator
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
 # Import the code for the dialog
 from .tasking_manager_dialog import TaskingManagerDialog
-import os.path
 
 
 class TaskingManager:
@@ -47,11 +48,8 @@ class TaskingManager:
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
-        locale = QgsSettings().value('locale/userLocale', QLocale().name())[0:2]
-        locale_path = os.path.join(
-            self.plugin_dir,
-            'i18n',
-            '{}.qm'.format(locale))
+        locale = QgsSettings().value("locale/userLocale", QLocale().name())[0:2]
+        locale_path = os.path.join(self.plugin_dir, "i18n", f"{locale}.qm")
 
         if os.path.exists(locale_path):
             self.translator = QTranslator()
@@ -60,7 +58,7 @@ class TaskingManager:
 
         # Declare instance attributes
         self.actions = []
-        self.menu = self.tr(u'&Tasking Manager')
+        self.menu = self.tr("&Tasking Manager")
 
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
@@ -79,8 +77,7 @@ class TaskingManager:
         :rtype: QString
         """
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
-        return QCoreApplication.translate('TaskingManager', message)
-
+        return QCoreApplication.translate("TaskingManager", message)
 
     def add_action(
         self,
@@ -92,7 +89,8 @@ class TaskingManager:
         add_to_toolbar=True,
         status_tip=None,
         whats_this=None,
-        parent=None):
+        parent=None,
+    ):
         """Add a toolbar icon to the toolbar.
 
         :param icon_path: Path to the icon for this action. Can be a resource
@@ -148,9 +146,7 @@ class TaskingManager:
             self.iface.addToolBarIcon(action)
 
         if add_to_menu:
-            self.iface.addPluginToMenu(
-                self.menu,
-                action)
+            self.iface.addPluginToMenu(self.menu, action)
 
         self.actions.append(action)
 
@@ -159,25 +155,22 @@ class TaskingManager:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = os.path.join(os.path.dirname(__file__), 'icon.png')
+        icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
         self.add_action(
             icon_path,
-            text=self.tr(u'Tasking Manager plugin'),
+            text=self.tr("Tasking Manager plugin"),
             callback=self.run,
-            parent=self.iface.mainWindow())
+            parent=self.iface.mainWindow(),
+        )
 
         # will be set False in run()
         self.first_start = True
 
-
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginMenu(
-                self.tr(u'&Tasking Manager'),
-                action)
+            self.iface.removePluginMenu(self.tr("&Tasking Manager"), action)
             self.iface.removeToolBarIcon(action)
-
 
     def run(self):
         """Run method that performs all the real work"""
