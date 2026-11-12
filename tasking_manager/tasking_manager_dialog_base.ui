@@ -14,29 +14,6 @@
    <string>Tasking Manager</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="2" column="0">
-    <widget class="QLineEdit" name="token_edit"/>
-   </item>
-   <item row="6" column="0">
-    <widget class="QListWidget" name="projects_list"/>
-   </item>
-   <item row="4" column="0">
-    <widget class="QLineEdit" name="textsearch_edit"/>
-   </item>
-   <item row="3" column="0">
-    <widget class="QLabel" name="label_3">
-     <property name="text">
-      <string>Text search</string>
-     </property>
-    </widget>
-   </item>
-   <item row="1" column="0">
-    <widget class="QLabel" name="label">
-     <property name="text">
-      <string>Authentication token</string>
-     </property>
-    </widget>
-   </item>
    <item row="0" column="0" colspan="2">
     <widget class="QLabel" name="label_title">
      <property name="text">
@@ -44,20 +21,55 @@
      </property>
     </widget>
    </item>
-   <item row="5" column="0" alignment="Qt::AlignRight">
-    <widget class="QPushButton" name="search_button">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Maximum" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
+   <item row="2" column="0" colspan="2" alignment="Qt::AlignLeft">
+    <widget class="QWidget" name="authWidget" native="true">
+     <layout class="QHBoxLayout" name="authLayout">
+      <item>
+       <widget class="QPushButton" name="login_button">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Login with OSM</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="logout_button">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Logout</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="4" column="0" colspan="2">
+    <widget class="QLabel" name="label_3">
      <property name="text">
-      <string>Search</string>
+      <string>Text search</string>
      </property>
     </widget>
    </item>
-   <item row="7" column="0" alignment="Qt::AlignRight">
+   <item row="5" column="0" colspan="2">
+    <widget class="QLineEdit" name="textsearch_edit"/>
+   </item>
+   <item row="7" column="0" colspan="2">
+    <widget class="QListWidget" name="projects_list"/>
+   </item>
+   <item row="8" column="0" colspan="2" alignment="Qt::AlignRight">
     <widget class="QWidget" name="horizontalWidget" native="true">
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -87,6 +99,29 @@
        </widget>
       </item>
      </layout>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="auth_status_label">
+     <property name="text">
+      <string>Not logged in</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item row="6" column="1">
+    <widget class="QPushButton" name="search_button">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Maximum" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>Search</string>
+     </property>
     </widget>
    </item>
   </layout>

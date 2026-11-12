@@ -1,3 +1,5 @@
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+tasking_manager/__pycache__/
+__pycache__/

@@ -26,10 +26,18 @@ import os
 from json import dumps
 from typing import Any
 
-from qgis.core import QgsProject, QgsVectorLayer
 import requests
+from qgis.core import QgsApplication, QgsProject, QgsVectorLayer
 from qgis.PyQt import QtWidgets, uic
-from requests.utils import select_proxy
+from qgis.PyQt.QtCore import Qt
+
+from .auth import (
+    TM_API_BASE,
+    AuthStore,
+    OsmAuthTask,
+    OsmLoginDialog,
+    normalize_token,
+)
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(
@@ -39,12 +47,20 @@ FORM_CLASS, _ = uic.loadUiType(
 )
 
 
-API_URL = "https://tasking-manager-production-api.hotosm.org/api/v2/projects"
+API_URL = f"{TM_API_BASE}/projects"
+TASK_STYLE_PATH = os.path.join(os.path.dirname(__file__), "styles", "task_status.qml")
+AOI_STYLE_PATH = os.path.join(
+    os.path.dirname(__file__), "styles", "area_of_interest.qml"
+)
 
 
 def request(url: str, token: str, params: dict[str, str] | None):
-    headers = None if token == "" else {"Authorization": token}
-    resp = requests.get(url, params=params, headers=headers)
+    headers: dict[str, str] = {}
+    token = normalize_token(token)
+    if token:
+        headers["Authorization"] = f"Token {token}"
+
+    resp = requests.get(url, params=params, headers=headers, timeout=30)
     resp.raise_for_status()
 
     data = resp.json()
@@ -68,7 +84,9 @@ def fetch_project_layers(project_id: str, token: str):
     tasks = dumps(project["tasks"])
 
     aoi_layer = QgsVectorLayer(area_of_interest, f"{project_id}-AOI", "ogr")
+    aoi_layer.loadNamedStyle(AOI_STYLE_PATH)
     tasks_layer = QgsVectorLayer(tasks, f"{project_id}-tasks", "ogr")
+    tasks_layer.loadNamedStyle(TASK_STYLE_PATH)
 
     return aoi_layer, tasks_layer
 
@@ -81,36 +99,6 @@ def format_project(project_dict: dict[str, Any]):
 
 
 class TaskingManagerDialog(QtWidgets.QDialog, FORM_CLASS):
-    def _download_data(self):
-        selected_item = self.projects_list.currentItem()
-
-        project_id = selected_item.text().split(":")[0].replace("#", "")
-
-        aoi_layer, tasks_layer = fetch_project_layers(
-            project_id, self.token_edit.text()
-        )
-
-        project = QgsProject.instance()
-        project.addMapLayer(aoi_layer)
-        project.addMapLayer(tasks_layer)
-
-    def _fetch_projects(self):
-        self.projects_list.clear()
-        token_edit = self.token_edit
-        token = token_edit.text()
-
-        textsearch_edit = self.textsearch_edit
-        textsearch = textsearch_edit.text()
-
-        gui_params = {} if textsearch == "" else {"textSearch": textsearch}
-
-        projects = fetch_projects(gui_params, token)
-        fmt_projects = [format_project(p) for p in projects]
-
-        for fmt_project in fmt_projects:
-            item = QtWidgets.QListWidgetItem(fmt_project)
-            self.projects_list.addItem(item)
-
     def __init__(self, parent=None):
         """Constructor."""
         super(TaskingManagerDialog, self).__init__(parent)
@@ -121,6 +109,228 @@ class TaskingManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
 
+        self._auth_store = AuthStore()
+        self._auth_task: OsmAuthTask | None = None
+        self._login_dialog: OsmLoginDialog | None = None
+        self._shutting_down = False
+
         self.search_button.clicked.connect(self._fetch_projects)
         self.download_button.clicked.connect(self._download_data)
-        # self.download_button.setEnabled(False)
+        self.close_button.clicked.connect(self.close)
+        self.login_button.clicked.connect(self._login)
+        self.logout_button.clicked.connect(self._logout)
+
+        self._load_saved_auth()
+
+    # ------------------------------------------------------------------
+    # Authentication UI
+    # ------------------------------------------------------------------
+    def _load_saved_auth(self) -> None:
+        self._update_auth_ui()
+
+    def _update_auth_ui(self) -> None:
+        token = self._auth_store.token
+        username = self._auth_store.username
+
+        if token:
+            if username:
+                self.auth_status_label.setText(f"Logged in as {username}")
+            else:
+                self.auth_status_label.setText("Token loaded")
+            self.logout_button.setEnabled(True)
+        else:
+            self.auth_status_label.setText("Not logged in")
+            self.logout_button.setEnabled(False)
+
+    def _login(self) -> None:
+        if self._auth_task is not None:
+            return
+
+        self.login_button.setEnabled(False)
+        self.auth_status_label.setText("Opening OSM login...")
+
+        task = OsmAuthTask(TM_API_BASE)
+        task.auth_url_ready.connect(self._open_login_browser, Qt.QueuedConnection)
+        task.succeeded.connect(self._on_login_success)
+        task.failed.connect(self._on_login_failed)
+        task.canceled.connect(self._on_login_canceled)
+
+        self._auth_task = task
+        QgsApplication.taskManager().addTask(task)
+
+    def _open_login_browser(self, auth_url: str) -> None:
+        if self._shutting_down or self._auth_task is None:
+            return
+
+        self._close_login_dialog()
+        dialog = OsmLoginDialog(auth_url, self)
+        dialog.auth_code.connect(self._on_auth_code)
+        dialog.auth_error.connect(self._on_auth_error)
+        dialog.canceled.connect(self._on_auth_canceled)
+        dialog.setWindowModality(Qt.ApplicationModal)
+        self._login_dialog = dialog
+        dialog.show()
+
+        self.auth_status_label.setText("Waiting for OSM authorization...")
+
+    def _on_auth_code(self, code: str, state: str) -> None:
+        if self._shutting_down:
+            return
+        if self._auth_task is not None:
+            self._auth_task.provide_code(code, state)
+
+    def _on_auth_error(self, message: str) -> None:
+        if self._shutting_down:
+            return
+        if self._auth_task is not None:
+            self._auth_task.provide_error(message)
+
+    def _on_auth_canceled(self) -> None:
+        if self._shutting_down:
+            return
+        if self._auth_task is not None:
+            self._auth_task.request_cancel()
+
+    def _on_login_success(self, result: dict[str, str]) -> None:
+        if self._shutting_down:
+            return
+        self._auth_task = None
+        self._auth_store.save(result.get("username", ""), result.get("token", ""))
+
+        self._close_login_dialog()
+        self.login_button.setEnabled(True)
+        self._update_auth_ui()
+
+    def _on_login_failed(self, message: str) -> None:
+        if self._shutting_down:
+            return
+        self._auth_task = None
+        self._close_login_dialog()
+        self.login_button.setEnabled(True)
+        self._update_auth_ui()
+
+        QtWidgets.QMessageBox.warning(self, self.tr("Tasking Manager login"), message)
+
+    def _on_login_canceled(self) -> None:
+        if self._shutting_down:
+            return
+        self._auth_task = None
+        self._close_login_dialog()
+        self.login_button.setEnabled(True)
+        self._update_auth_ui()
+
+    def _logout(self) -> None:
+        if self._auth_task is not None:
+            self._auth_task.request_cancel()
+
+        self._auth_store.clear()
+        self.projects_list.clear()
+        self._update_auth_ui()
+
+    def _close_login_dialog(self) -> None:
+        dialog = self._login_dialog
+        self._login_dialog = None
+        if dialog is None:
+            return
+
+        dialog.blockSignals(True)
+        dialog.close()
+        dialog.deleteLater()
+
+    def _cancel_active_login(self) -> None:
+        self._close_login_dialog()
+
+        task = self._auth_task
+        self._auth_task = None
+        if task is not None:
+            # Ignore any late signals from the task while the dialog is going
+            # away, then cancel it and give the worker a moment to stop.
+            task.blockSignals(True)
+            task.request_cancel()
+            task.waitForFinished(5000)
+
+        self.login_button.setEnabled(True)
+
+    def shutdown(self) -> None:
+        """Cancel the login task and close the embedded browser."""
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        self._cancel_active_login()
+
+    def closeEvent(self, event):  # noqa: N802
+        self._cancel_active_login()
+        super().closeEvent(event)
+
+    # ------------------------------------------------------------------
+    # Project browsing
+    # ------------------------------------------------------------------
+    def _handle_request_error(self, exc: requests.RequestException) -> bool:
+        response = getattr(exc, "response", None)
+        if response is not None and response.status_code == 401:
+            self._auth_store.clear()
+            self._update_auth_ui()
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Tasking Manager"),
+                self.tr(
+                    "Your Tasking Manager session has expired. " "Please log in again."
+                ),
+            )
+            return True
+        return False
+
+    def _download_data(self):
+        selected_item = self.projects_list.currentItem()
+        if selected_item is None:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Tasking Manager"),
+                self.tr("Select a project first."),
+            )
+            return
+
+        project_id = selected_item.text().split(":")[0].replace("#", "")
+
+        try:
+            aoi_layer, tasks_layer = fetch_project_layers(
+                project_id, self._auth_store.token
+            )
+        except requests.RequestException as exc:
+            if not self._handle_request_error(exc):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    self.tr("Tasking Manager"),
+                    self.tr("Could not download the project: %1").replace(
+                        "%1", str(exc)
+                    ),
+                )
+            return
+
+        project = QgsProject.instance()
+        project.addMapLayer(aoi_layer)
+        project.addMapLayer(tasks_layer)
+
+    def _fetch_projects(self):
+        self.projects_list.clear()
+        token = self._auth_store.token
+
+        textsearch = self.textsearch_edit.text()
+        gui_params = {} if textsearch == "" else {"textSearch": textsearch}
+
+        try:
+            projects = fetch_projects(gui_params, token)
+        except requests.RequestException as exc:
+            if not self._handle_request_error(exc):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    self.tr("Tasking Manager"),
+                    self.tr("Could not fetch projects: %1").replace("%1", str(exc)),
+                )
+            return
+
+        fmt_projects = [format_project(p) for p in projects]
+
+        for fmt_project in fmt_projects:
+            item = QtWidgets.QListWidgetItem(fmt_project)
+            self.projects_list.addItem(item)

@@ -168,6 +168,12 @@ class TaskingManager:
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
+        dialog = getattr(self, "dlg", None)
+        if dialog is not None:
+            dialog.shutdown()
+            dialog.close()
+            self.dlg = None
+
         for action in self.actions:
             self.iface.removePluginMenu(self.tr("&Tasking Manager"), action)
             self.iface.removeToolBarIcon(action)
