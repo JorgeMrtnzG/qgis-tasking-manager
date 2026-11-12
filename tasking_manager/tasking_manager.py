@@ -155,7 +155,7 @@ class TaskingManager:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+        icon_path = os.path.join(os.path.dirname(__file__), "icon.svg")
         self.add_action(
             icon_path,
             text=self.tr("Tasking Manager plugin"),
