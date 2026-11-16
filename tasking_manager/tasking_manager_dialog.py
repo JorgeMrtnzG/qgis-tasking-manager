@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: Unlicense
 """
 /***************************************************************************
  TaskingManagerDialog
@@ -14,11 +15,12 @@
 
 /***************************************************************************
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
+ *   This is free and unencumbered software released into the public       *
+ *   domain under the Unlicense. Anyone is free to copy, modify, publish,  *
+ *   use, compile, sell, or distribute this software, for any purpose,     *
+ *   commercial or non-commercial, and by any means.                       *
  *                                                                         *
+ *   See the LICENSE file for the full text.                               *
  ***************************************************************************/
 """
 

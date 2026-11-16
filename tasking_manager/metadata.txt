@@ -27,6 +27,7 @@ tags=python
 
 homepage=https://github.com/JorgeMrtnzG/qgis-tasking-manager
 category=Plugins
+license=Unlicense
 icon=icon.png
 # experimental flag
 experimental=True
