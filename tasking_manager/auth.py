@@ -44,8 +44,8 @@ DEFAULT_REDIRECT_URI = "https://tasks.hotosm.org/authorized"
 LOGIN_TIMEOUT_SECONDS = 300
 REQUEST_TIMEOUT_SECONDS = 30
 
-USERNAME_SETTINGS_KEY = "tasking_manager/auth/username"
-TOKEN_SETTINGS_KEY = "tasking_manager/auth/token"
+AUTH_USERNAME_KEY = "tasking_manager/auth/username"
+AUTH_TOKEN_KEY = "tasking_manager/auth/token"
 
 
 def normalize_token(token: str | None) -> str:
@@ -94,7 +94,9 @@ def parse_oauth_redirect(
 
 def _redirect_uri_from_auth_url(auth_url: str) -> str:
     query = QUrlQuery(QUrl(auth_url))
-    return query.queryItemValue("redirect_uri", QUrl.FullyDecoded) or DEFAULT_REDIRECT_URI
+    return (
+        query.queryItemValue("redirect_uri", QUrl.FullyDecoded) or DEFAULT_REDIRECT_URI
+    )
 
 
 class AuthStore:
@@ -105,22 +107,20 @@ class AuthStore:
 
     @property
     def username(self) -> str:
-        return self._settings.value(USERNAME_SETTINGS_KEY, "", type=str) or ""
+        return self._settings.value(AUTH_USERNAME_KEY, "", type=str) or ""
 
     @property
     def token(self) -> str:
-        return normalize_token(
-            self._settings.value(TOKEN_SETTINGS_KEY, "", type=str) or ""
-        )
+        return normalize_token(self._settings.value(AUTH_TOKEN_KEY, "", type=str) or "")
 
     def save(self, username: str, token: str) -> None:
-        self._settings.setValue(USERNAME_SETTINGS_KEY, username)
-        self._settings.setValue(TOKEN_SETTINGS_KEY, normalize_token(token))
+        self._settings.setValue(AUTH_USERNAME_KEY, username)
+        self._settings.setValue(AUTH_TOKEN_KEY, normalize_token(token))
         self._settings.sync()
 
     def clear(self) -> None:
-        self._settings.remove(USERNAME_SETTINGS_KEY)
-        self._settings.remove(TOKEN_SETTINGS_KEY)
+        self._settings.remove(AUTH_USERNAME_KEY)
+        self._settings.remove(AUTH_TOKEN_KEY)
         self._settings.sync()
 
 
@@ -128,16 +128,9 @@ def _callback_error_message(response: requests.Response) -> str:
     try:
         payload = response.json()
     except ValueError:
-        return (
-            "Tasking Manager rejected the login "
-            f"(HTTP {response.status_code})."
-        )
+        return "Tasking Manager rejected the login " f"(HTTP {response.status_code})."
 
-    message = (
-        payload.get("Error")
-        or payload.get("detail")
-        or payload.get("message")
-    )
+    message = payload.get("Error") or payload.get("detail") or payload.get("message")
     if message:
         return f"Tasking Manager rejected the login: {message}"
     return f"Tasking Manager rejected the login (HTTP {response.status_code})."
